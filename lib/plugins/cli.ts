@@ -70,7 +70,9 @@ export class CLIPlugin implements Plugin {
     console.log("  topics                - Show available topics");
     console.log("  consumers             - Show active consumers");
     console.log("  help                  - Show this help");
-    console.log("  {\"topic\":\"...\",...} - Raw JSON publish\n");
+    console.log("  {\"topic\":\"...\",...} - Raw JSON publish");
+    console.log("\nEnvironment:");
+    console.log("  DEBUG=1               - Show agent thinking and tool calls\n");
   }
 
   private showTopics(): void {

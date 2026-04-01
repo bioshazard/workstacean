@@ -3,6 +3,14 @@ import { spawn } from "bun";
 import { readFile, writeFile } from "node:fs/promises";
 import type { Plugin, EventBus, BusMessage } from "../types";
 
+const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";
+
+function debug(...args: unknown[]): void {
+  if (DEBUG) {
+    console.log("[DEBUG]", ...args);
+  }
+}
+
 interface Message {
   role: "user" | "assistant" | "system";
   content: string;
@@ -167,6 +175,7 @@ export class AgentPlugin implements Plugin {
     }
 
     console.log(`[Agent] Processing from ${sender}: ${content}`);
+    debug("Message:", msg);
 
     const response = await this.runAgent(`signal:${sender}`, content);
 
@@ -229,19 +238,26 @@ export class AgentPlugin implements Plugin {
       if ((msg as Record<string, unknown>).reasoning_content) {
         // @ts-ignore
         assistantMessage.reasoning_content = msg.reasoning_content;
+        debug("Thinking:", assistantMessage.reasoning_content);
       }
 
       messages.push(assistantMessage);
 
       if (msg.tool_calls && msg.tool_calls.length > 0) {
         for (const tc of msg.tool_calls) {
+          const toolArgs = typeof tc.function.arguments === "string" 
+            ? JSON.parse(tc.function.arguments) 
+            : tc.function.arguments;
+          
+          debug("Tool call:", tc.function.name, JSON.stringify(toolArgs));
+
           const result = await executeTool({
             id: tc.id || `call_${Math.random().toString(36).slice(2)}`,
             name: tc.function.name,
-            arguments: typeof tc.function.arguments === "string" 
-              ? JSON.parse(tc.function.arguments) 
-              : tc.function.arguments,
+            arguments: toolArgs,
           });
+
+          debug("Tool result:", tc.function.name, result.slice(0, 200) + (result.length > 200 ? "..." : ""));
 
           messages.push({
             role: "user",
@@ -254,6 +270,7 @@ export class AgentPlugin implements Plugin {
       }
 
       // No more tool calls, return the final response
+      debug("Final response:", assistantMessage.content);
       return assistantMessage.content;
     }
   }

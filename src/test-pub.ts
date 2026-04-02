@@ -35,8 +35,10 @@ if (input.startsWith("{")) {
   try {
     const parsed = JSON.parse(input);
     if (parsed.topic) {
+      const msgId = parsed.id || crypto.randomUUID();
       const msg: BusMessage = {
-        id: parsed.id || crypto.randomUUID(),
+        id: msgId,
+        correlationId: parsed.correlationId || msgId,
         topic: parsed.topic,
         timestamp: Date.now(),
         payload: parsed.payload ?? parsed,
@@ -60,8 +62,10 @@ if (input.startsWith("{")) {
     const number = parts[1];
     const message = parts.slice(2).join(" ");
     
+    const msgId = crypto.randomUUID();
     const msg: BusMessage = {
-      id: crypto.randomUUID(),
+      id: msgId,
+      correlationId: msgId,
       topic: `message.outbound.signal.${number}`,
       timestamp: Date.now(),
       payload: { content: message },

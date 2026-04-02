@@ -143,8 +143,10 @@ export class CLIPlugin implements Plugin {
     const number = args[0];
     const message = args.slice(1).join(" ");
 
+    const msgId = crypto.randomUUID();
     const busMessage: BusMessage = {
-      id: crypto.randomUUID(),
+      id: msgId,
+      correlationId: msgId,
       topic: `message.outbound.signal.${number}`,
       timestamp: Date.now(),
       payload: { content: message },
@@ -165,6 +167,7 @@ export class CLIPlugin implements Plugin {
     const id = crypto.randomUUID();
     const msg: BusMessage = {
       id,
+      correlationId: id,
       topic: "message.inbound.cli",
       timestamp: Date.now(),
       payload: { sender: "cli", content: message },
@@ -183,8 +186,10 @@ export class CLIPlugin implements Plugin {
     try {
       const parsed = JSON.parse(input);
       if (parsed.topic && typeof parsed.topic === "string") {
+        const rawId = parsed.id || crypto.randomUUID();
         const msg: BusMessage = {
-          id: parsed.id || crypto.randomUUID(),
+          id: rawId,
+          correlationId: parsed.correlationId || rawId,
           topic: parsed.topic,
           timestamp: Date.now(),
           payload: parsed.payload ?? parsed,

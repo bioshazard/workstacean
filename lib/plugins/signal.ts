@@ -89,8 +89,10 @@ export class SignalPlugin implements Plugin {
         const sender = envelope.source;
         console.log(`[Signal] ${sender}: ${text}`);
 
+        const msgId = crypto.randomUUID();
         const msg: BusMessage = {
-          id: crypto.randomUUID(),
+          id: msgId,
+          correlationId: msgId,
           topic: `message.inbound.signal.${sender}`,
           timestamp: Date.now(),
           payload: { sender, content: text },

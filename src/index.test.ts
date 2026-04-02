@@ -17,6 +17,7 @@ describe("InMemoryEventBus", () => {
 
     const msg: BusMessage = {
       id: "123",
+      correlationId: "123",
       topic: "message.test",
       timestamp: Date.now(),
       payload: { content: "hello" },
@@ -37,6 +38,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.inbound", {
       id: "1",
+      correlationId: "1",
       topic: "message.inbound",
       timestamp: Date.now(),
       payload: {},
@@ -44,6 +46,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("command.test", {
       id: "2",
+      correlationId: "2",
       topic: "command.test",
       timestamp: Date.now(),
       payload: {},
@@ -60,6 +63,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.inbound.signal.123", {
       id: "1",
+      correlationId: "1",
       topic: "message.inbound.signal.123",
       timestamp: Date.now(),
       payload: {},
@@ -67,6 +71,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.outbound.signal.456", {
       id: "2",
+      correlationId: "2",
       topic: "message.outbound.signal.456",
       timestamp: Date.now(),
       payload: {},
@@ -74,6 +79,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("command.test", {
       id: "3",
+      correlationId: "3",
       topic: "command.test",
       timestamp: Date.now(),
       payload: {},
@@ -93,6 +99,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.inbound.signal.123", {
       id: "1",
+      correlationId: "1",
       topic: "message.inbound.signal.123",
       timestamp: Date.now(),
       payload: {},
@@ -100,6 +107,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.outbound.signal.123", {
       id: "2",
+      correlationId: "2",
       topic: "message.outbound.signal.123",
       timestamp: Date.now(),
       payload: {},
@@ -107,6 +115,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.foo.bar.signal.123", {
       id: "3",
+      correlationId: "3",
       topic: "message.foo.bar.signal.123",
       timestamp: Date.now(),
       payload: {},
@@ -126,6 +135,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.outbound.signal.+1234", {
       id: "1",
+      correlationId: "1",
       topic: "message.outbound.signal.+1234",
       timestamp: Date.now(),
       payload: {},
@@ -133,6 +143,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.outbound.signal.+5678", {
       id: "2",
+      correlationId: "2",
       topic: "message.outbound.signal.+5678",
       timestamp: Date.now(),
       payload: {},
@@ -140,6 +151,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.inbound.signal.+1234", {
       id: "3",
+      correlationId: "3",
       topic: "message.inbound.signal.+1234",
       timestamp: Date.now(),
       payload: {},
@@ -159,6 +171,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.test", {
       id: "1",
+      correlationId: "1",
       topic: "message.test",
       timestamp: Date.now(),
       payload: {},
@@ -168,6 +181,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.test", {
       id: "2",
+      correlationId: "2",
       topic: "message.test",
       timestamp: Date.now(),
       payload: {},
@@ -227,6 +241,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.test", {
       id: "1",
+      correlationId: "1",
       topic: "message.test",
       timestamp: Date.now(),
       payload: {},
@@ -246,6 +261,7 @@ describe("InMemoryEventBus", () => {
 
     bus.publish("message.test", {
       id: "1",
+      correlationId: "1",
       topic: "message.test",
       timestamp: Date.now(),
       payload: {},
@@ -270,6 +286,7 @@ describe("Topic matching edge cases", () => {
 
     bus.publish("anything.message", {
       id: "1",
+      correlationId: "1",
       topic: "anything.message",
       timestamp: Date.now(),
       payload: {},
@@ -286,6 +303,7 @@ describe("Topic matching edge cases", () => {
 
     bus.publish("message", {
       id: "1",
+      correlationId: "1",
       topic: "message",
       timestamp: Date.now(),
       payload: {},
@@ -293,6 +311,7 @@ describe("Topic matching edge cases", () => {
 
     bus.publish("message.inbound", {
       id: "2",
+      correlationId: "2",
       topic: "message.inbound",
       timestamp: Date.now(),
       payload: {},
@@ -309,6 +328,7 @@ describe("Topic matching edge cases", () => {
 
     bus.publish("message", {
       id: "1",
+      correlationId: "1",
       topic: "message",
       timestamp: Date.now(),
       payload: {},
@@ -336,6 +356,7 @@ describe("Integration: CLI → Signal flow", () => {
     // CLI publishes a message
     const msg: BusMessage = {
       id: crypto.randomUUID(),
+      correlationId: crypto.randomUUID(),
       topic: "message.outbound.signal.+1234",
       timestamp: Date.now(),
       payload: { content: "hello from CLI" },
@@ -362,6 +383,7 @@ describe("Integration: CLI → Signal flow", () => {
     // Signal publishes inbound message
     const msg: BusMessage = {
       id: crypto.randomUUID(),
+      correlationId: crypto.randomUUID(),
       topic: "message.inbound.signal.+5678",
       timestamp: Date.now(),
       payload: { sender: "+5678", content: "hello" },

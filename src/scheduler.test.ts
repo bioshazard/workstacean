@@ -91,6 +91,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "auto-cron",
+      correlationId: "auto-cron",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {
@@ -114,6 +115,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "auto-once",
+      correlationId: "auto-once",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {
@@ -138,6 +140,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "test-add",
+      correlationId: "test-add",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {
@@ -164,6 +167,7 @@ describe("SchedulerPlugin", () => {
     // Add first
     bus.publish("command.schedule", {
       id: "test-remove",
+      correlationId: "test-remove",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {
@@ -181,6 +185,7 @@ describe("SchedulerPlugin", () => {
     // Remove
     bus.publish("command.schedule", {
       id: "remove-cmd",
+      correlationId: "remove-cmd",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: { action: "remove", id: "test-remove" },
@@ -194,6 +199,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "test-pause",
+      correlationId: "test-pause",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {
@@ -207,6 +213,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "pause-cmd",
+      correlationId: "pause-cmd",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: { action: "pause", id: "test-pause" },
@@ -227,6 +234,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "list-cmd",
+      correlationId: "list-cmd",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: { action: "list" },
@@ -251,6 +259,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "test-fire",
+      correlationId: "test-fire",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {
@@ -279,6 +288,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "test-oneshot",
+      correlationId: "test-oneshot",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {
@@ -308,6 +318,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "test-recurring",
+      correlationId: "test-recurring",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {
@@ -338,6 +349,7 @@ describe("SchedulerPlugin", () => {
     // Missing topic
     bus.publish("command.schedule", {
       id: "bad-cmd",
+      correlationId: "bad-cmd",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {
@@ -356,6 +368,7 @@ describe("SchedulerPlugin", () => {
 
     bus.publish("command.schedule", {
       id: "bad-cron",
+      correlationId: "bad-cron",
       topic: "command.schedule",
       timestamp: Date.now(),
       payload: {

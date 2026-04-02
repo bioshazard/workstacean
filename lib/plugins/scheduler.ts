@@ -22,6 +22,7 @@ interface ScheduleDefinition {
     content: string;
     sender?: string;
     channel?: string;
+    recipient?: string;
     [key: string]: unknown;
   };
   enabled?: boolean;
@@ -209,8 +210,10 @@ export class SchedulerPlugin implements Plugin {
     }
 
     // Publish to bus
+    const msgId = crypto.randomUUID();
     const msg: BusMessage = {
-      id: crypto.randomUUID(),
+      id: msgId,
+      correlationId: msgId,
       topic: def.topic,
       timestamp: Date.now(),
       payload: { ...def.payload },
@@ -233,7 +236,7 @@ export class SchedulerPlugin implements Plugin {
       schedule?: string;
       timezone?: string;
       topic?: string;
-      payload?: { content?: string; sender?: string; channel?: string };
+      payload?: { content?: string; sender?: string; channel?: string; recipient?: string };
     };
 
     const action = payload.action;
@@ -322,7 +325,8 @@ export class SchedulerPlugin implements Plugin {
     }));
 
     const reply: BusMessage = {
-      id: requestMsg.id,
+      id: crypto.randomUUID(),
+      correlationId: requestMsg.correlationId,
       topic: "schedule.list",
       timestamp: Date.now(),
       payload: { schedules: list },

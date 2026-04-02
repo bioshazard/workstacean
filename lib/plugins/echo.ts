@@ -23,7 +23,8 @@ export class EchoPlugin implements Plugin {
     const replyTopic = msg.topic.replace("inbound", "outbound");
     
     const reply: BusMessage = {
-      id: msg.id, // same correlation id
+      id: crypto.randomUUID(),
+      correlationId: msg.correlationId,
       topic: replyTopic,
       timestamp: Date.now(),
       payload: { content: `Echo: ${content}` },

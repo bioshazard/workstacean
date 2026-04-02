@@ -20,12 +20,19 @@ export class LoggerPlugin implements Plugin {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS events (
         id TEXT NOT NULL,
+        correlation_id TEXT NOT NULL,
         topic TEXT NOT NULL,
         payload TEXT NOT NULL,
         timestamp INTEGER NOT NULL,
         source TEXT NOT NULL
       )
     `);
+
+    // Migrate: add correlation_id column if upgrading from old schema
+    const columns = this.db.query("PRAGMA table_info(events)").all() as { name: string }[];
+    if (!columns.some(c => c.name === "correlation_id")) {
+      this.db.exec("ALTER TABLE events ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''");
+    }
 
     this.subscriptionId = bus.subscribe("#", this.name, (msg: BusMessage) => {
       this.log(msg);
@@ -43,8 +50,8 @@ export class LoggerPlugin implements Plugin {
     if (!this.db) return;
     
     this.db.run(
-      "INSERT INTO events (id, topic, payload, timestamp, source) VALUES (?, ?, ?, ?, ?)",
-      [msg.id, msg.topic, JSON.stringify(msg), msg.timestamp, msg.topic.split(".")[0]]
+      "INSERT INTO events (id, correlation_id, topic, payload, timestamp, source) VALUES (?, ?, ?, ?, ?, ?)",
+      [msg.id, msg.correlationId, msg.topic, JSON.stringify(msg), msg.timestamp, msg.topic.split(".")[0]]
     );
   }
 
@@ -68,7 +75,7 @@ export class LoggerPlugin implements Plugin {
     if (!this.db) return [];
     
     const rows = this.db.query(
-      "SELECT payload FROM events WHERE id = ? ORDER BY timestamp ASC"
+      "SELECT payload FROM events WHERE correlation_id = ? ORDER BY timestamp ASC"
     ).all(correlationId) as { payload: string }[];
     return rows.map(row => JSON.parse(row.payload));
   }

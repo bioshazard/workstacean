@@ -24,6 +24,7 @@ describe("EchoPlugin", () => {
     // Publish an inbound message
     const inboundMsg: BusMessage = {
       id: "test-123",
+      correlationId: "test-123",
       topic: "message.inbound.signal.+1234",
       timestamp: Date.now(),
       payload: { sender: "+1234", content: "hello" },
@@ -33,20 +34,21 @@ describe("EchoPlugin", () => {
     bus.publish(inboundMsg.topic, inboundMsg);
 
     expect(replyReceived).not.toBeNull();
-    expect(replyReceived!.id).toBe("test-123");
+    expect(replyReceived!.correlationId).toBe("test-123");
     expect(replyReceived!.topic).toBe("message.outbound.signal.+1234");
     expect(replyReceived!.reply).toBe("Echo: hello");
   });
 
   test("echo preserves correlation id", () => {
-    let capturedId: string | null = null;
+    let capturedCorrelationId: string | null = null;
 
     bus.subscribe("message.outbound.#", "test", (msg) => {
-      capturedId = msg.id;
+      capturedCorrelationId = msg.correlationId;
     });
 
     const inboundMsg: BusMessage = {
-      id: "correlation-abc",
+      id: "original-id",
+      correlationId: "correlation-abc",
       topic: "message.inbound.signal.+5678",
       timestamp: Date.now(),
       payload: { sender: "+5678", content: "test" },
@@ -54,8 +56,8 @@ describe("EchoPlugin", () => {
 
     bus.publish(inboundMsg.topic, inboundMsg);
 
-    expect(capturedId).not.toBeNull();
-    expect(capturedId!).toBe("correlation-abc");
+    expect(capturedCorrelationId).not.toBeNull();
+    expect(capturedCorrelationId!).toBe("correlation-abc");
   });
 
   test("echo ignores messages without sender/content", () => {
@@ -67,6 +69,7 @@ describe("EchoPlugin", () => {
 
     const inboundMsg: BusMessage = {
       id: "no-payload",
+      correlationId: "no-payload",
       topic: "message.inbound.signal.+9999",
       timestamp: Date.now(),
       payload: {},

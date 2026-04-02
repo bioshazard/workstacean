@@ -96,6 +96,7 @@ export class AgentPlugin implements Plugin {
 
   private bus: EventBus | null = null;
   private sessions = new Map<string, SessionInfo>();
+  private messageQueues = new Map<string, Promise<unknown>>();
   private modelRegistry: ModelRegistry | null = null;
   private authStorage: AuthStorage | null = null;
   private workspaceDir: string;
@@ -146,7 +147,7 @@ export class AgentPlugin implements Plugin {
 
   uninstall(): void {}
 
-  private createScheduleTaskTool(bus: EventBus): ToolDefinition {
+  private createScheduleTaskTool(bus: EventBus, channelId: string): ToolDefinition {
     const cronsDir = join(this.workspaceDir, "crons");
 
     return {
@@ -175,6 +176,11 @@ export class AgentPlugin implements Plugin {
         // Infer type from schedule format
         const type = /^\d{4}-\d{2}-\d{2}T/.test(params.schedule) ? "once" : "cron";
 
+        // Derive channel and recipient from the session's channelId
+        const sessionChannel = channelId.startsWith("signal:") ? "signal" : channelId.startsWith("cli") ? "cli" : "cli";
+        const channel = params.channel || sessionChannel;
+        const recipient = channelId.startsWith("signal:") ? channelId.slice("signal:".length) : undefined;
+
         const def = {
           id: params.id,
           type,
@@ -184,7 +190,8 @@ export class AgentPlugin implements Plugin {
           payload: {
             content: params.message,
             sender: "cron",
-            channel: params.channel || "cli",
+            channel,
+            recipient,
           },
           enabled: true,
           lastFired: null,
@@ -196,8 +203,10 @@ export class AgentPlugin implements Plugin {
         writeFileSync(filePath, doc.toString());
 
         // Notify scheduler via bus
+        const cmdMsgId = crypto.randomUUID();
         const cmdMsg: BusMessage = {
-          id: crypto.randomUUID(),
+          id: cmdMsgId,
+          correlationId: cmdMsgId,
           topic: "command.schedule",
           timestamp: Date.now(),
           payload: { action: "add", ...def },
@@ -232,8 +241,10 @@ export class AgentPlugin implements Plugin {
         const filePath = join(cronsDir, `${params.id}.yaml`);
 
         // Remove via bus command
+        const cancelId = crypto.randomUUID();
         const cmdMsg: BusMessage = {
-          id: crypto.randomUUID(),
+          id: cancelId,
+          correlationId: cancelId,
           topic: "command.schedule",
           timestamp: Date.now(),
           payload: { action: "remove", id: params.id },
@@ -271,10 +282,15 @@ export class AgentPlugin implements Plugin {
       });
       await loader.reload();
 
+      // Create tools per-session so they capture channelId in closure
+      const customTools = this.bus
+        ? [this.createScheduleTaskTool(this.bus, channelId), this.createCancelScheduleTaskTool(this.bus)]
+        : [];
+
       // Continue recent session if exists, otherwise create new
       const { session } = await createAgentSession({
         tools,
-        customTools: this.bus ? [this.createScheduleTaskTool(this.bus), this.createCancelScheduleTaskTool(this.bus)] : [],
+        customTools,
         sessionManager: SessionManager.continueRecent(this.workspaceDir, channelDir),
         modelRegistry: this.modelRegistry ?? undefined,
         authStorage: this.authStorage ?? undefined,
@@ -301,7 +317,8 @@ export class AgentPlugin implements Plugin {
       this.resetSession(`signal:${sender}`);
       const replyTopic = msg.topic.replace("inbound", "outbound");
       const reply: BusMessage = {
-        id: msg.id,
+        id: crypto.randomUUID(),
+        correlationId: msg.correlationId,
         topic: replyTopic,
         timestamp: Date.now(),
         payload: { content: "Session reset. How can I help you?" },
@@ -319,7 +336,8 @@ export class AgentPlugin implements Plugin {
 
     const replyTopic = msg.topic.replace("inbound", "outbound");
     const reply: BusMessage = {
-      id: msg.id,
+      id: crypto.randomUUID(),
+      correlationId: msg.correlationId,
       topic: replyTopic,
       timestamp: Date.now(),
       payload: { content: response },
@@ -335,6 +353,7 @@ export class AgentPlugin implements Plugin {
       content?: string;
       sender?: string;
       channel?: string;
+      recipient?: string;
       [key: string]: unknown;
     };
 
@@ -342,21 +361,25 @@ export class AgentPlugin implements Plugin {
     if (!content) return;
 
     const channel = payload.channel || "cli";
+    const recipient = payload.recipient;
     const cronId = msg.topic.replace("cron.", "");
     const channelId = `cron:${cronId}`;
 
-    debug("Processing cron:", cronId, "→", channel);
+    debug("Processing cron:", cronId, "→", channel, recipient ? `(recipient: ${recipient})` : "");
 
     const response = await this.runAgent(channelId, content);
     if (!response) return;
 
-    // Route reply based on channel
-    const replyTopic = channel === "signal"
-      ? `message.outbound.signal.cron`
-      : `message.outbound.${channel}`;
+    // Route reply based on channel — use recipient number for Signal, not "cron"
+    const replyTopic = channel === "signal" && recipient
+      ? `message.outbound.signal.${recipient}`
+      : channel === "signal"
+        ? `message.outbound.signal.cron`
+        : `message.outbound.${channel}`;
 
     const reply: BusMessage = {
-      id: msg.id,
+      id: crypto.randomUUID(),
+      correlationId: msg.correlationId,
       topic: replyTopic,
       timestamp: Date.now(),
       payload: { content: response },
@@ -380,6 +403,17 @@ export class AgentPlugin implements Plugin {
   }
 
   private async runAgent(channelId: string, userMessage: string): Promise<string | null> {
+    const prev = this.messageQueues.get(channelId) ?? Promise.resolve();
+    let resolve!: (v: string | null) => void;
+    const next = prev.then(() => this.doRunAgent(channelId, userMessage)).then(
+      (v) => { resolve(v); },
+      () => { resolve(null); }
+    );
+    this.messageQueues.set(channelId, next);
+    return new Promise<string | null>((r) => { resolve = r; });
+  }
+
+  private async doRunAgent(channelId: string, userMessage: string): Promise<string | null> {
     const { session } = await this.getSession(channelId);
 
     let responseText = "";

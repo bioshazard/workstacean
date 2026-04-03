@@ -51,8 +51,8 @@ export class SchedulerPlugin implements Plugin {
   private timers = new Map<string, ActiveTimer>();
   private defaultTimezone: string;
 
-  constructor(workspaceDir: string) {
-    this.cronsDir = join(resolve(workspaceDir), "crons");
+  constructor(dataDir: string) {
+    this.cronsDir = join(resolve(dataDir), "crons");
     this.defaultTimezone = process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   }
 

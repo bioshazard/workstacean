@@ -2,6 +2,9 @@
 # see all versions at https://hub.docker.com/r/oven/bun/tags
 FROM oven/bun:1 AS base
 WORKDIR /usr/src/app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl wget jq sqlite3 netcat-openbsd telnet git unzip zip \
+    && rm -rf /var/lib/apt/lists/*
 
 # install dependencies into temp directory
 # this will cache them and speed up future builds
@@ -15,10 +18,8 @@ RUN mkdir -p /temp/prod
 COPY package.json bun.lock /temp/prod/
 RUN cd /temp/prod && bun install --frozen-lockfile --production
 
-# dev: full source + dev deps, no tests
+# dev: full source + dev deps, no tests (source + node_modules mounted from host)
 FROM base AS dev
-COPY --from=install /temp/dev/node_modules node_modules
-COPY . .
 RUN mkdir -p data
 CMD ["bun", "run", "--watch", "src/index.ts"]
 

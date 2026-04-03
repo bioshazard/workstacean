@@ -1,12 +1,14 @@
 import { existsSync, readdirSync, mkdirSync } from "node:fs";
 import { resolve, join, extname } from "node:path";
 import { InMemoryEventBus } from "../lib/bus";
+import { DebugPlugin } from "../lib/plugins/debug";
 import { LoggerPlugin } from "../lib/plugins/logger";
 import { CLIPlugin } from "../lib/plugins/cli";
 import { SignalPlugin } from "../lib/plugins/signal";
 import { EchoPlugin } from "../lib/plugins/echo";
 import { AgentPlugin } from "../lib/plugins/agent";
 import { SchedulerPlugin } from "../lib/plugins/scheduler";
+import { EventViewerPlugin } from "../lib/plugins/event-viewer";
 import type { Plugin } from "../lib/types";
 
 // --- Workspace config ---
@@ -24,13 +26,22 @@ const dataDir = resolve(
 const bus = new InMemoryEventBus();
 
 // Core plugins (always loaded)
+// Debug plugin first so it captures all subsequent console output
+const debugPlugin = new DebugPlugin();
+debugPlugin.install(bus);
+
 const corePlugins: Plugin[] = [
+  debugPlugin,
   new LoggerPlugin(dataDir),
   new CLIPlugin(),
   new SignalPlugin(),
   new AgentPlugin(workspaceDir, dataDir),
-  new SchedulerPlugin(workspaceDir),
+  new SchedulerPlugin(dataDir),
 ];
+
+if (!process.env.DISABLE_EVENT_VIEWER) {
+  corePlugins.push(new EventViewerPlugin());
+}
 
 // Built-in plugins (disabled by default, can be enabled via env)
 const builtInPlugins: Record<string, Plugin> = {

@@ -33,7 +33,6 @@ Your tools (bash, read, write, edit) operate within the workspace directory. Do 
 
 - \`memory/\` — Your long-term memory. Write notes, summaries, structured data here. Reference across sessions.
 - \`plugins/\` — Drop \`.ts\` or \`.js\` files implementing the Plugin interface here. Loaded on container restart.
-- \`crons/\` — Schedule YAML files. See Scheduling section below.
 
 ## Built-in Topics
 
@@ -98,11 +97,13 @@ export class AgentPlugin implements Plugin {
   private modelRegistry: ModelRegistry | null = null;
   private authStorage: AuthStorage | null = null;
   private workspaceDir: string;
+  private dataDir: string;
   private sessionsDir: string;
 
   constructor(workspaceDir: string, dataDir: string) {
     this.workspaceDir = resolve(workspaceDir);
-    this.sessionsDir = join(resolve(dataDir), "sessions");
+    this.dataDir = resolve(dataDir);
+    this.sessionsDir = join(this.dataDir, "sessions");
   }
 
   install(bus: EventBus): void {
@@ -146,7 +147,7 @@ export class AgentPlugin implements Plugin {
   uninstall(): void {}
 
   private createScheduleTaskTool(bus: EventBus, channelId: string): ToolDefinition {
-    const cronsDir = join(this.workspaceDir, "crons");
+    const cronsDir = join(this.dataDir, "crons");
 
     return {
       name: "schedule_task",
@@ -221,7 +222,7 @@ export class AgentPlugin implements Plugin {
   }
 
   private createCancelScheduleTaskTool(bus: EventBus): ToolDefinition {
-    const cronsDir = join(this.workspaceDir, "crons");
+    const cronsDir = join(this.dataDir, "crons");
 
     return {
       name: "cancel_schedule_task",
@@ -260,8 +261,6 @@ export class AgentPlugin implements Plugin {
 
   private async getSession(channelId: string): Promise<SessionInfo> {
     if (!this.sessions.has(channelId)) {
-      const tools = createCodingTools(this.workspaceDir);
-
       // Per-channel session directory (sanitize channelId for filesystem)
       const safeChannelId = channelId.replace(/[^a-zA-Z0-9_\-+]/g, "_");
       const channelDir = join(this.sessionsDir, safeChannelId);
@@ -286,8 +285,10 @@ export class AgentPlugin implements Plugin {
         : [];
 
       // Continue recent session if exists, otherwise create new
+      // Pass cwd to constrain bash tool and use createCodingTools for proper path resolution
       const { session } = await createAgentSession({
-        tools,
+        cwd: this.workspaceDir,
+        tools: createCodingTools(this.workspaceDir),
         customTools,
         sessionManager: SessionManager.continueRecent(this.workspaceDir, channelDir),
         modelRegistry: this.modelRegistry ?? undefined,

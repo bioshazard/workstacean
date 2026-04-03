@@ -1,6 +1,7 @@
 export interface BusMessage {
   id: string;
   correlationId: string;
+  parentId?: string;
   topic: string;
   timestamp: number;
   payload: unknown;

@@ -15,25 +15,18 @@ RUN mkdir -p /temp/prod
 COPY package.json bun.lock /temp/prod/
 RUN cd /temp/prod && bun install --frozen-lockfile --production
 
-# copy node_modules from temp directory
-# then copy all (non-ignored) project files into the image
-FROM base AS prerelease
+# dev: full source + dev deps, no tests
+FROM base AS dev
 COPY --from=install /temp/dev/node_modules node_modules
 COPY . .
+RUN mkdir -p data
+CMD ["bun", "run", "--watch", "src/index.ts"]
 
-# [optional] tests
-ENV NODE_ENV=production
-RUN bun test
-
-# copy production dependencies and source code into final image
+# release: production deps + source, tests as build gate
 FROM base AS release
 COPY --from=install /temp/prod/node_modules node_modules
-COPY --from=prerelease /usr/src/app/src ./src
-COPY --from=prerelease /usr/src/app/lib ./lib
-COPY --from=prerelease /usr/src/app/models.json .
-COPY --from=prerelease /usr/src/app/package.json .
-
-# data directory (legacy, sessions now live in workspace/)
+COPY . .
+ENV NODE_ENV=production
+RUN bun test
 RUN mkdir -p data
-
 CMD ["bun", "run", "src/index.ts"]

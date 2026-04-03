@@ -2,7 +2,7 @@ services:
   workstacean:
     build:
       context: .
-      target: dev
+      target: release
     restart: unless-stopped
     env_file: .env
     environment:
@@ -11,8 +11,6 @@ services:
     volumes:
       - workspace:/workspace
       - data:/data
-      - ./src:/usr/src/app/src
-      - ./lib:/usr/src/app/lib
 
 volumes:
   data:

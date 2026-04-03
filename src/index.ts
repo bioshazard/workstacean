@@ -17,14 +17,18 @@ if (!existsSync(workspaceDir)) {
   mkdirSync(workspaceDir, { recursive: true });
 }
 
+const dataDir = resolve(
+  process.env.DATA_DIR || join(process.cwd(), "data")
+);
+
 const bus = new InMemoryEventBus();
 
 // Core plugins (always loaded)
 const corePlugins: Plugin[] = [
-  new LoggerPlugin(),
+  new LoggerPlugin(dataDir),
   new CLIPlugin(),
   new SignalPlugin(),
-  new AgentPlugin(workspaceDir),
+  new AgentPlugin(workspaceDir, dataDir),
   new SchedulerPlugin(workspaceDir),
 ];
 

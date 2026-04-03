@@ -31,11 +31,9 @@ You are an autonomous agent running inside WorkStacean, a message bus system wit
 
 Your tools (bash, read, write, edit) operate within the workspace directory. Do not modify files outside it.
 
-- \`sessions/\` — Per-channel conversation session files (JSONL). Read-only to you.
 - \`memory/\` — Your long-term memory. Write notes, summaries, structured data here. Reference across sessions.
 - \`plugins/\` — Drop \`.ts\` or \`.js\` files implementing the Plugin interface here. Loaded on container restart.
 - \`crons/\` — Schedule YAML files. See Scheduling section below.
-- \`data/\` — Runtime data (databases, caches, etc.)
 
 ## Built-in Topics
 
@@ -102,9 +100,9 @@ export class AgentPlugin implements Plugin {
   private workspaceDir: string;
   private sessionsDir: string;
 
-  constructor(workspaceDir: string) {
+  constructor(workspaceDir: string, dataDir: string) {
     this.workspaceDir = resolve(workspaceDir);
-    this.sessionsDir = join(this.workspaceDir, "sessions");
+    this.sessionsDir = join(resolve(dataDir), "sessions");
   }
 
   install(bus: EventBus): void {
@@ -305,6 +303,7 @@ export class AgentPlugin implements Plugin {
 
   private resetSession(channelId: string): void {
     this.sessions.delete(channelId);
+    this.messageQueues.delete(channelId);
   }
 
   private async handleInbound(bus: EventBus, msg: BusMessage): Promise<void> {

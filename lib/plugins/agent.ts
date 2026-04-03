@@ -259,52 +259,57 @@ export class AgentPlugin implements Plugin {
     };
   }
 
+  private async createSession(channelId: string, continueRecent: boolean): Promise<SessionInfo> {
+    const safeChannelId = channelId.replace(/[^a-zA-Z0-9_\-+]/g, "_");
+    const channelDir = join(this.sessionsDir, safeChannelId);
+    if (!existsSync(channelDir)) {
+      mkdirSync(channelDir, { recursive: true });
+    }
+
+    const loader = new DefaultResourceLoader({
+      agentsFilesOverride: (current) => ({
+        agentsFiles: [
+          ...current.agentsFiles,
+          { path: "virtual:agent-instructions", content: AGENT_INSTRUCTIONS },
+        ],
+      }),
+    });
+    await loader.reload();
+
+    const customTools = this.bus
+      ? [this.createScheduleTaskTool(this.bus, channelId), this.createCancelScheduleTaskTool(this.bus)]
+      : [];
+
+    const sessionManager = continueRecent
+      ? SessionManager.continueRecent(this.workspaceDir, channelDir)
+      : SessionManager.create(this.workspaceDir, channelDir);
+
+    const { session } = await createAgentSession({
+      cwd: this.workspaceDir,
+      tools: createCodingTools(this.workspaceDir),
+      customTools,
+      sessionManager,
+      modelRegistry: this.modelRegistry ?? undefined,
+      authStorage: this.authStorage ?? undefined,
+      resourceLoader: loader,
+    });
+
+    const info = { session, manager: session.sessionManager };
+    this.sessions.set(channelId, info);
+    debug("Session for", channelId, "->", channelDir, continueRecent ? "(continued)" : "(fresh)");
+    return info;
+  }
+
   private async getSession(channelId: string): Promise<SessionInfo> {
     if (!this.sessions.has(channelId)) {
-      // Per-channel session directory (sanitize channelId for filesystem)
-      const safeChannelId = channelId.replace(/[^a-zA-Z0-9_\-+]/g, "_");
-      const channelDir = join(this.sessionsDir, safeChannelId);
-      if (!existsSync(channelDir)) {
-        mkdirSync(channelDir, { recursive: true });
-      }
-
-      // Inject agent instructions into Pi SDK context
-      const loader = new DefaultResourceLoader({
-        agentsFilesOverride: (current) => ({
-          agentsFiles: [
-            ...current.agentsFiles,
-            { path: "virtual:agent-instructions", content: AGENT_INSTRUCTIONS },
-          ],
-        }),
-      });
-      await loader.reload();
-
-      // Create tools per-session so they capture channelId in closure
-      const customTools = this.bus
-        ? [this.createScheduleTaskTool(this.bus, channelId), this.createCancelScheduleTaskTool(this.bus)]
-        : [];
-
-      // Continue recent session if exists, otherwise create new
-      // Pass cwd to constrain bash tool and use createCodingTools for proper path resolution
-      const { session } = await createAgentSession({
-        cwd: this.workspaceDir,
-        tools: createCodingTools(this.workspaceDir),
-        customTools,
-        sessionManager: SessionManager.continueRecent(this.workspaceDir, channelDir),
-        modelRegistry: this.modelRegistry ?? undefined,
-        authStorage: this.authStorage ?? undefined,
-        resourceLoader: loader,
-      });
-
-      this.sessions.set(channelId, { session, manager: session.sessionManager });
-      debug("Session for", channelId, "->", channelDir);
+      return this.createSession(channelId, true);
     }
     return this.sessions.get(channelId)!;
   }
 
-  private resetSession(channelId: string): void {
-    this.sessions.delete(channelId);
+  private async resetSession(channelId: string): Promise<void> {
     this.messageQueues.delete(channelId);
+    await this.createSession(channelId, false);
   }
 
   private async handleInbound(bus: EventBus, msg: BusMessage): Promise<void> {
@@ -314,7 +319,7 @@ export class AgentPlugin implements Plugin {
     if (!sender || !content) return;
 
     if (content === "/new") {
-      this.resetSession(`signal:${sender}`);
+      await this.resetSession(`signal:${sender}`);
       const replyTopic = msg.topic.replace("inbound", "outbound");
       const reply: BusMessage = {
         id: crypto.randomUUID(),
@@ -390,13 +395,13 @@ export class AgentPlugin implements Plugin {
     bus.publish(reply.topic, reply);
   }
 
-  private handleCommand(bus: EventBus, msg: BusMessage): void {
+  private async handleCommand(bus: EventBus, msg: BusMessage): Promise<void> {
     const action = (msg.payload as { action?: string })?.action;
 
     if (action === "reset") {
       const channel = (msg.payload as { channel?: string })?.channel;
       if (channel) {
-        this.resetSession(channel);
+        await this.resetSession(channel);
         console.log(`[Agent] Session reset for ${channel}`);
       }
     }

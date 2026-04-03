@@ -14,6 +14,7 @@ services:
       - workspace:/workspace
       - data:/data
       - ./:/usr/src/app
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   data:

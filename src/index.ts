@@ -5,6 +5,7 @@ import { DebugPlugin } from "../lib/plugins/debug";
 import { LoggerPlugin } from "../lib/plugins/logger";
 import { CLIPlugin } from "../lib/plugins/cli";
 import { SignalPlugin } from "../lib/plugins/signal";
+import { DiscordPlugin } from "../lib/plugins/discord";
 import { EchoPlugin } from "../lib/plugins/echo";
 import { AgentPlugin } from "../lib/plugins/agent";
 import { SchedulerPlugin } from "../lib/plugins/scheduler";
@@ -35,9 +36,18 @@ const corePlugins: Plugin[] = [
   new LoggerPlugin(dataDir),
   new CLIPlugin(),
   new SignalPlugin(),
-  new AgentPlugin(workspaceDir, dataDir),
   new SchedulerPlugin(dataDir),
 ];
+
+// AgentPlugin (Pi SDK) — disabled when A2APlugin workspace plugin is active
+if (!process.env.DISABLE_AGENT_PLUGIN) {
+  corePlugins.push(new AgentPlugin(workspaceDir, dataDir));
+}
+
+// DiscordPlugin — enabled when DISCORD_BOT_TOKEN is set
+if (process.env.DISCORD_BOT_TOKEN) {
+  corePlugins.push(new DiscordPlugin());
+}
 
 if (!process.env.DISABLE_EVENT_VIEWER) {
   corePlugins.push(new EventViewerPlugin());

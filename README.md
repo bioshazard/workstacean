@@ -32,28 +32,7 @@ DEBUG=1 bun run src/index.ts
 
 ## Model Configuration
 
-Edit `models.json` to configure your LLM endpoint:
-
-```json
-{
-  "providers": {
-    "protolabs": {
-      "baseUrl": "https://ai.proto-labs.ai/v1",
-      "api": "openai-completions",
-      "apiKey": "sk-...",
-      "models": [
-        {
-          "id": "protolabs/local",
-          "name": "ProtoLabs Local (OpenAI-compatible)",
-          "reasoning": true,
-          "contextWindow": 32000,
-          "maxTokens": 4096
-        }
-      ]
-    }
-  }
-}
-```
+Edit `models.json` to configure your LLM endpoint per Pi SDK
 
 The agent automatically reads `models.json` from the project directory.
 

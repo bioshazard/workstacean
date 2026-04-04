@@ -25,7 +25,7 @@ describe("models.json", () => {
   test("local-llm has correct base_url", () => {
     const raw = readFileSync(modelsPath, "utf-8");
     const parsed = JSON.parse(raw);
-    expect(parsed.providers["local-llm"].baseUrl).toBe("https://bios-pc.cloud.bios.dev:8443/v1");
+    expect(parsed.providers["local-llm"].baseUrl).toBe("http://gateway:4000/v1");
   });
 
   test("local-llm uses openai-completions api", () => {

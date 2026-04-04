@@ -97,10 +97,14 @@ async function loadWorkspacePlugins(): Promise<Plugin[]> {
     const modulePath = join(pluginsDir, file);
     try {
       const mod = await import(modulePath);
-      // Check default export or named exports for Plugin interface
-      const candidates: unknown[] = mod.default
-        ? [mod.default, ...Object.values(mod)]
-        : Object.values(mod);
+      // Check default export or named exports for Plugin interface.
+      // Deduplicate: Object.values(mod) includes default in some runtimes,
+      // so a plain default export would otherwise be installed twice.
+      const seen = new Set<unknown>();
+      const candidates: unknown[] = [];
+      for (const v of mod.default ? [mod.default, ...Object.values(mod)] : Object.values(mod)) {
+        if (!seen.has(v)) { seen.add(v); candidates.push(v); }
+      }
 
       for (const candidate of candidates) {
         if (isPlugin(candidate)) {

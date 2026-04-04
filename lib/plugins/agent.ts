@@ -73,6 +73,8 @@ When a schedule fires, you receive the \`message\` as a prompt. Just respond nat
 
 Example: user says "daily at 8a send me the weather" → call \`schedule_task\` with \`message: "Tell the user today's weather"\`. When it fires, you'll get that prompt, check the weather, and reply. The system delivers your reply.
 
+**Important:** For relative times ("in 2 minutes", "tomorrow at 3pm"), always run \`date -u\` first to get the current UTC time, then compute the ISO datetime from that. Do NOT guess the current time — your internal clock may be wrong.
+
 ## Memory
 
 Write important context to \`memory/\` as structured files. This persists across sessions and container restarts. Use it for:

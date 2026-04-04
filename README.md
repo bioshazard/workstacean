@@ -14,6 +14,8 @@ A generic message bus with plugin architecture. Signal in, agent replies.
 - `CLIPlugin` - stdin reader, publishes commands to bus
 - `SignalPlugin` - WebSocket listener for inbound, subscribes to `message.outbound.signal.#` for replies
 - `AgentPlugin` - Pi SDK agent with ReAct loop, tool calling, persistent JSONL sessions
+- [`DiscordPlugin`](docs/discord.md) - Discord gateway; @mentions and slash commands → bus → agent replies (opt-in via `DISCORD_BOT_TOKEN`)
+- [`SchedulerPlugin`](docs/scheduler.md) - Cron-style scheduled events from `workspace/crons/*.yaml`
 
 **Built-in Plugins (disabled by default):**
 - `EchoPlugin` - replies to inbound messages with "Echo: {content}" (enable via `ENABLED_PLUGINS=echo`)

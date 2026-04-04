@@ -44,6 +44,7 @@ export class LoggerPlugin implements Plugin {
     }
 
     this.subscriptionId = bus.subscribe("#", this.name, (msg: BusMessage) => {
+      if (msg.topic.startsWith("debug.")) return;
       this.log(msg);
     });
   }

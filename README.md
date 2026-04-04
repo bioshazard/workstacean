@@ -37,14 +37,14 @@ Edit `models.json` to configure your LLM endpoint:
 ```json
 {
   "providers": {
-    "local-llm": {
-      "baseUrl": "http://localhost:8080/v1",
+    "protolabs": {
+      "baseUrl": "https://ai.proto-labs.ai/v1",
       "api": "openai-completions",
-      "apiKey": "sk-dummy",
+      "apiKey": "sk-...",
       "models": [
         {
-          "id": "default",
-          "name": "Local LLM",
+          "id": "protolabs/local",
+          "name": "ProtoLabs Local (OpenAI-compatible)",
           "reasoning": true,
           "contextWindow": 32000,
           "maxTokens": 4096

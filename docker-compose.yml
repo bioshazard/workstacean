@@ -8,11 +8,14 @@ services:
     environment:
       - WORKSPACE_DIR=/workspace
       - DATA_DIR=/data
+      - TZ=America/New_York
+    ports:
+      - "8080:8080"
     volumes:
       - workspace:/workspace
       - data:/data
-      - ./src:/usr/src/app/src
-      - ./lib:/usr/src/app/lib
+      - ./:/usr/src/app
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   data:

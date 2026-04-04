@@ -33,7 +33,6 @@ Your tools (bash, read, write, edit) operate within the workspace directory. Do 
 
 - \`memory/\` — Your long-term memory. Write notes, summaries, structured data here. Reference across sessions.
 - \`plugins/\` — Drop \`.ts\` or \`.js\` files implementing the Plugin interface here. Loaded on container restart.
-- \`crons/\` — Schedule YAML files. See Scheduling section below.
 
 ## Built-in Topics
 
@@ -74,6 +73,8 @@ When a schedule fires, you receive the \`message\` as a prompt. Just respond nat
 
 Example: user says "daily at 8a send me the weather" → call \`schedule_task\` with \`message: "Tell the user today's weather"\`. When it fires, you'll get that prompt, check the weather, and reply. The system delivers your reply.
 
+**Important:** For relative times ("in 2 minutes", "tomorrow at 3pm"), always run \`date -u\` first to get the current UTC time, then compute the ISO datetime from that. Do NOT guess the current time — your internal clock may be wrong.
+
 ## Memory
 
 Write important context to \`memory/\` as structured files. This persists across sessions and container restarts. Use it for:
@@ -98,11 +99,13 @@ export class AgentPlugin implements Plugin {
   private modelRegistry: ModelRegistry | null = null;
   private authStorage: AuthStorage | null = null;
   private workspaceDir: string;
+  private dataDir: string;
   private sessionsDir: string;
 
   constructor(workspaceDir: string, dataDir: string) {
     this.workspaceDir = resolve(workspaceDir);
-    this.sessionsDir = join(resolve(dataDir), "sessions");
+    this.dataDir = resolve(dataDir);
+    this.sessionsDir = join(this.dataDir, "sessions");
   }
 
   install(bus: EventBus): void {
@@ -146,7 +149,7 @@ export class AgentPlugin implements Plugin {
   uninstall(): void {}
 
   private createScheduleTaskTool(bus: EventBus, channelId: string): ToolDefinition {
-    const cronsDir = join(this.workspaceDir, "crons");
+    const cronsDir = join(this.dataDir, "crons");
 
     return {
       name: "schedule_task",
@@ -221,7 +224,7 @@ export class AgentPlugin implements Plugin {
   }
 
   private createCancelScheduleTaskTool(bus: EventBus): ToolDefinition {
-    const cronsDir = join(this.workspaceDir, "crons");
+    const cronsDir = join(this.dataDir, "crons");
 
     return {
       name: "cancel_schedule_task",
@@ -258,52 +261,57 @@ export class AgentPlugin implements Plugin {
     };
   }
 
+  private async createSession(channelId: string, continueRecent: boolean): Promise<SessionInfo> {
+    const safeChannelId = channelId.replace(/[^a-zA-Z0-9_\-+]/g, "_");
+    const channelDir = join(this.sessionsDir, safeChannelId);
+    if (!existsSync(channelDir)) {
+      mkdirSync(channelDir, { recursive: true });
+    }
+
+    const loader = new DefaultResourceLoader({
+      agentsFilesOverride: (current) => ({
+        agentsFiles: [
+          ...current.agentsFiles,
+          { path: "virtual:agent-instructions", content: AGENT_INSTRUCTIONS },
+        ],
+      }),
+    });
+    await loader.reload();
+
+    const customTools = this.bus
+      ? [this.createScheduleTaskTool(this.bus, channelId), this.createCancelScheduleTaskTool(this.bus)]
+      : [];
+
+    const sessionManager = continueRecent
+      ? SessionManager.continueRecent(this.workspaceDir, channelDir)
+      : SessionManager.create(this.workspaceDir, channelDir);
+
+    const { session } = await createAgentSession({
+      cwd: this.workspaceDir,
+      tools: createCodingTools(this.workspaceDir),
+      customTools,
+      sessionManager,
+      modelRegistry: this.modelRegistry ?? undefined,
+      authStorage: this.authStorage ?? undefined,
+      resourceLoader: loader,
+    });
+
+    const info = { session, manager: session.sessionManager };
+    this.sessions.set(channelId, info);
+    debug("Session for", channelId, "->", channelDir, continueRecent ? "(continued)" : "(fresh)");
+    return info;
+  }
+
   private async getSession(channelId: string): Promise<SessionInfo> {
     if (!this.sessions.has(channelId)) {
-      const tools = createCodingTools(this.workspaceDir);
-
-      // Per-channel session directory (sanitize channelId for filesystem)
-      const safeChannelId = channelId.replace(/[^a-zA-Z0-9_\-+]/g, "_");
-      const channelDir = join(this.sessionsDir, safeChannelId);
-      if (!existsSync(channelDir)) {
-        mkdirSync(channelDir, { recursive: true });
-      }
-
-      // Inject agent instructions into Pi SDK context
-      const loader = new DefaultResourceLoader({
-        agentsFilesOverride: (current) => ({
-          agentsFiles: [
-            ...current.agentsFiles,
-            { path: "virtual:agent-instructions", content: AGENT_INSTRUCTIONS },
-          ],
-        }),
-      });
-      await loader.reload();
-
-      // Create tools per-session so they capture channelId in closure
-      const customTools = this.bus
-        ? [this.createScheduleTaskTool(this.bus, channelId), this.createCancelScheduleTaskTool(this.bus)]
-        : [];
-
-      // Continue recent session if exists, otherwise create new
-      const { session } = await createAgentSession({
-        tools,
-        customTools,
-        sessionManager: SessionManager.continueRecent(this.workspaceDir, channelDir),
-        modelRegistry: this.modelRegistry ?? undefined,
-        authStorage: this.authStorage ?? undefined,
-        resourceLoader: loader,
-      });
-
-      this.sessions.set(channelId, { session, manager: session.sessionManager });
-      debug("Session for", channelId, "->", channelDir);
+      return this.createSession(channelId, true);
     }
     return this.sessions.get(channelId)!;
   }
 
-  private resetSession(channelId: string): void {
-    this.sessions.delete(channelId);
+  private async resetSession(channelId: string): Promise<void> {
     this.messageQueues.delete(channelId);
+    await this.createSession(channelId, false);
   }
 
   private async handleInbound(bus: EventBus, msg: BusMessage): Promise<void> {
@@ -313,7 +321,7 @@ export class AgentPlugin implements Plugin {
     if (!sender || !content) return;
 
     if (content === "/new") {
-      this.resetSession(`signal:${sender}`);
+      await this.resetSession(`signal:${sender}`);
       const replyTopic = msg.topic.replace("inbound", "outbound");
       const reply: BusMessage = {
         id: crypto.randomUUID(),
@@ -389,13 +397,13 @@ export class AgentPlugin implements Plugin {
     bus.publish(reply.topic, reply);
   }
 
-  private handleCommand(bus: EventBus, msg: BusMessage): void {
+  private async handleCommand(bus: EventBus, msg: BusMessage): Promise<void> {
     const action = (msg.payload as { action?: string })?.action;
 
     if (action === "reset") {
       const channel = (msg.payload as { channel?: string })?.channel;
       if (channel) {
-        this.resetSession(channel);
+        await this.resetSession(channel);
         console.log(`[Agent] Session reset for ${channel}`);
       }
     }

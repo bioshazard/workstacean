@@ -70,7 +70,7 @@ async function runTests(): Promise<void> {
   logger.install(bus);
   agent.install(bus);
 
-  debug("Agent workspace:", agent["workspaceDir"]);
+  debug("Agent workspace:", workspaceDir);
 
   for (const [index, test] of TEST_PROMPTS.entries()) {
     console.log(`\n--- Test ${index + 1}/${TEST_PROMPTS.length}: ${test.name} ---`);

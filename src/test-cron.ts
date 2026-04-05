@@ -100,8 +100,8 @@ async function runTests(): Promise<void> {
   agent.install(bus);
   scheduler.install(bus);
 
-  debug("Agent workspace:", agent["workspaceDir"]);
-  debug("Scheduler crons dir:", scheduler["cronsDir"]);
+  debug("Agent workspace:", workspaceDir);
+  debug("Scheduler crons dir:", join(dataDir, "crons"));
 
   // --- Schedule tests via agent ---
   for (const [index, test] of TEST_PROMPTS.entries()) {

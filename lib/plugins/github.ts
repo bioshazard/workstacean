@@ -132,6 +132,44 @@ function extractContext(event: string, payload: Record<string, unknown>): GitHub
   return null;
 }
 
+// ── GitHub API helpers ────────────────────────────────────────────────────────
+
+// Add an "eyes" reaction to acknowledge receipt — fire-and-forget, best-effort.
+function reactToMention(token: string, event: string, payload: Record<string, unknown>): void {
+  const repo = payload.repository as Record<string, unknown> | undefined;
+  const owner = (repo?.owner as Record<string, unknown> | undefined)?.login as string | undefined;
+  const repoName = repo?.name as string | undefined;
+  if (!owner || !repoName) return;
+
+  let url: string;
+  if (event === "issue_comment") {
+    const id = (payload.comment as Record<string, unknown>)?.id;
+    url = `https://api.github.com/repos/${owner}/${repoName}/issues/comments/${id}/reactions`;
+  } else if (event === "pull_request_review_comment") {
+    const id = (payload.comment as Record<string, unknown>)?.id;
+    url = `https://api.github.com/repos/${owner}/${repoName}/pulls/comments/${id}/reactions`;
+  } else if (event === "issues") {
+    const number = (payload.issue as Record<string, unknown>)?.number;
+    url = `https://api.github.com/repos/${owner}/${repoName}/issues/${number}/reactions`;
+  } else if (event === "pull_request") {
+    const number = (payload.pull_request as Record<string, unknown>)?.number;
+    url = `https://api.github.com/repos/${owner}/${repoName}/issues/${number}/reactions`;
+  } else {
+    return;
+  }
+
+  fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "User-Agent": "protoWorkstacean/1.0",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: JSON.stringify({ content: "eyes" }),
+  }).catch(() => {}); // swallow — reaction is best-effort
+}
+
 // ── HMAC-SHA256 signature validation ─────────────────────────────────────────
 
 async function validateSignature(secret: string, body: string, sigHeader: string | null): Promise<boolean> {
@@ -227,7 +265,7 @@ export class GitHubPlugin implements Plugin {
           return new Response("Bad request", { status: 400 });
         }
 
-        this._handleEvent(event, payload, config, bus);
+        this._handleEvent(event, payload, config, bus, token);
 
         return new Response("OK", { status: 200 });
       },
@@ -245,12 +283,16 @@ export class GitHubPlugin implements Plugin {
     payload: Record<string, unknown>,
     config: GitHubConfig,
     bus: EventBus,
+    token: string,
   ): void {
     const ctx = extractContext(event, payload);
     if (!ctx) return;
 
     // Only act on explicit @mentions
     if (!ctx.body.toLowerCase().includes(config.mentionHandle.toLowerCase())) return;
+
+    // Acknowledge receipt immediately — eyes reaction signals the bot is working
+    reactToMention(token, event, payload);
 
     const skillHint = config.skillHints[event];
     const correlationId = crypto.randomUUID();

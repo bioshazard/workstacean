@@ -6,6 +6,7 @@ import { LoggerPlugin } from "../lib/plugins/logger";
 import { CLIPlugin } from "../lib/plugins/cli";
 import { SignalPlugin } from "../lib/plugins/signal";
 import { DiscordPlugin } from "../lib/plugins/discord";
+import { GitHubPlugin } from "../lib/plugins/github";
 import { EchoPlugin } from "../lib/plugins/echo";
 import { AgentPlugin } from "../lib/plugins/agent";
 import { SchedulerPlugin } from "../lib/plugins/scheduler";
@@ -47,6 +48,11 @@ if (!process.env.DISABLE_AGENT_PLUGIN) {
 // DiscordPlugin — enabled when DISCORD_BOT_TOKEN is set
 if (process.env.DISCORD_BOT_TOKEN) {
   corePlugins.push(new DiscordPlugin(workspaceDir));
+}
+
+// GitHubPlugin — enabled when GITHUB_TOKEN is set
+if (process.env.GITHUB_TOKEN) {
+  corePlugins.push(new GitHubPlugin(workspaceDir));
 }
 
 if (!process.env.DISABLE_EVENT_VIEWER) {

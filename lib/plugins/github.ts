@@ -167,7 +167,11 @@ function reactToMention(token: string, event: string, payload: Record<string, un
       "X-GitHub-Api-Version": "2022-11-28",
     },
     body: JSON.stringify({ content: "eyes" }),
-  }).catch(() => {}); // swallow — reaction is best-effort
+  })
+    .then(res => {
+      if (!res.ok) res.text().then(t => console.error(`[github] reaction failed ${res.status}: ${t}`));
+    })
+    .catch(err => console.error("[github] reaction error:", err));
 }
 
 // ── HMAC-SHA256 signature validation ─────────────────────────────────────────

@@ -8,6 +8,7 @@ import { CLIPlugin } from "../lib/plugins/cli";
 import { SignalPlugin } from "../lib/plugins/signal";
 import { DiscordPlugin } from "../lib/plugins/discord";
 import { GitHubPlugin } from "../lib/plugins/github";
+import { PlanePlugin } from "../lib/plugins/plane";
 import { EchoPlugin } from "../lib/plugins/echo";
 import { AgentPlugin } from "../lib/plugins/agent";
 import { A2APlugin } from "../lib/plugins/a2a";
@@ -57,6 +58,10 @@ if (process.env.DISCORD_BOT_TOKEN) {
 if (process.env.GITHUB_TOKEN) {
   corePlugins.push(new GitHubPlugin(workspaceDir));
 }
+
+// PlanePlugin — enabled when PLANE_WEBHOOK_SECRET or PLANE_API_KEY is set
+// (works in dev mode without secret — just skips signature verification)
+corePlugins.push(new PlanePlugin(workspaceDir));
 
 // A2APlugin — always enabled; loads projects.yaml (no-op if file absent)
 corePlugins.push(new A2APlugin(workspaceDir));

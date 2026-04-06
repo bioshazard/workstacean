@@ -13,7 +13,7 @@ import { A2APlugin } from "../lib/plugins/a2a";
 import { HITLPlugin } from "../lib/plugins/hitl";
 import { SchedulerPlugin } from "../lib/plugins/scheduler";
 import { EventViewerPlugin } from "../lib/plugins/event-viewer";
-import type { Plugin } from "../lib/types";
+import type { Plugin, BusMessage } from "../lib/types";
 
 // --- Workspace config ---
 const workspaceDir = resolve(
@@ -152,3 +152,77 @@ console.log(`Type 'help' for commands.`);
 // Show CLI prompt after startup
 const cli = corePlugins.find((p) => p.name === "cli") as CLIPlugin;
 cli?.showPrompt();
+
+// --- HTTP API server (POST /publish, GET /health) ---
+const HTTP_PORT = parseInt(process.env.WORKSTACEAN_HTTP_PORT || "3000", 10);
+const API_KEY = process.env.WORKSTACEAN_API_KEY;
+
+Bun.serve({
+  port: HTTP_PORT,
+  fetch: async (req) => {
+    const url = new URL(req.url);
+
+    // --- GET /health ---
+    if (req.method === "GET" && url.pathname === "/health") {
+      return Response.json({ status: "ok", timestamp: Date.now() });
+    }
+
+    // --- POST /publish ---
+    if (req.method === "POST" && url.pathname === "/publish") {
+      // Auth check: if WORKSTACEAN_API_KEY is set, require X-API-Key header
+      if (API_KEY) {
+        const provided = req.headers.get("X-API-Key");
+        if (provided !== API_KEY) {
+          return Response.json(
+            { success: false, error: "Unauthorized" },
+            { status: 401 }
+          );
+        }
+      }
+
+      let body: Record<string, unknown>;
+      try {
+        body = (await req.json()) as Record<string, unknown>;
+      } catch {
+        return Response.json(
+          { success: false, error: "Invalid JSON body" },
+          { status: 400 }
+        );
+      }
+
+      // Validate topic
+      if (!body.topic || typeof body.topic !== "string") {
+        return Response.json(
+          { success: false, error: "Missing or invalid 'topic' (must be a string)" },
+          { status: 400 }
+        );
+      }
+
+      // Build BusMessage
+      const message: BusMessage = {
+        id: crypto.randomUUID(),
+        correlationId:
+          typeof body.correlationId === "string"
+            ? body.correlationId
+            : crypto.randomUUID(),
+        topic: body.topic,
+        timestamp: Date.now(),
+        payload: body.payload,
+        ...(body.source ? { source: body.source as BusMessage["source"] } : {}),
+        ...(body.reply ? { reply: body.reply as BusMessage["reply"] } : {}),
+      };
+
+      bus.publish(body.topic, message);
+
+      return Response.json({ success: true, id: message.id });
+    }
+
+    // --- Fallback ---
+    return Response.json(
+      { success: false, error: "Not found" },
+      { status: 404 }
+    );
+  },
+});
+
+console.log(`HTTP API listening on port ${HTTP_PORT}`);

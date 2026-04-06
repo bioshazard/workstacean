@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve, join, extname } from "node:path";
+import { parse as parseYaml } from "yaml";
 import { InMemoryEventBus } from "../lib/bus";
 import { DebugPlugin } from "../lib/plugins/debug";
 import { LoggerPlugin } from "../lib/plugins/logger";
@@ -215,6 +216,42 @@ Bun.serve({
       bus.publish(body.topic, message);
 
       return Response.json({ success: true, id: message.id });
+    }
+
+    // --- GET /api/projects ---
+    if (req.method === "GET" && url.pathname === "/api/projects") {
+      try {
+        const projectsPath = join(workspaceDir, "projects.yaml");
+        if (!existsSync(projectsPath)) {
+          return Response.json({ success: true, data: [] });
+        }
+        const raw = readFileSync(projectsPath, "utf8");
+        const parsed = parseYaml(raw) as { projects?: unknown[] };
+        return Response.json({ success: true, data: parsed.projects ?? [] });
+      } catch (err) {
+        return Response.json(
+          { success: false, error: `Failed to parse projects.yaml: ${err}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // --- GET /api/agents ---
+    if (req.method === "GET" && url.pathname === "/api/agents") {
+      try {
+        const agentsPath = join(workspaceDir, "agents.yaml");
+        if (!existsSync(agentsPath)) {
+          return Response.json({ success: true, data: [] });
+        }
+        const raw = readFileSync(agentsPath, "utf8");
+        const parsed = parseYaml(raw) as { agents?: unknown[] };
+        return Response.json({ success: true, data: parsed.agents ?? [] });
+      } catch (err) {
+        return Response.json(
+          { success: false, error: `Failed to parse agents.yaml: ${err}` },
+          { status: 500 }
+        );
+      }
     }
 
     // --- Fallback ---

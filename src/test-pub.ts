@@ -5,8 +5,8 @@
 // Or: bun run src/test-pub.ts '{"topic":"message.outbound.signal.+1234","reply":"hello"}'
 
 import { InMemoryEventBus } from "../lib/bus";
-import { SignalPlugin } from "../lib/plugins/signal";
-import { LoggerPlugin } from "../lib/plugins/logger";
+import { SignalPlugin } from "../lib/clients/signal";
+import { LoggerPlugin } from "../lib/clients/logger";
 import type { BusMessage } from "../lib/types";
 
 const bus = new InMemoryEventBus();

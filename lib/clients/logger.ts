@@ -22,6 +22,7 @@ export class LoggerPlugin implements Plugin {
     }
 
     this.db = new Database(`${this.dataDir}/events.db`);
+    this.db.exec("PRAGMA journal_mode=WAL");
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS events (
         id TEXT NOT NULL,
@@ -33,6 +34,9 @@ export class LoggerPlugin implements Plugin {
         source TEXT NOT NULL
       )
     `);
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_events_topic ON events(topic)");
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC)");
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_events_correlation_id ON events(correlation_id)");
 
     // Migrate: add missing columns if upgrading from old schema
     const columns = this.db.query("PRAGMA table_info(events)").all() as { name: string }[];

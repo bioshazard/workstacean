@@ -6,7 +6,7 @@ import { InMemoryEventBus } from "../lib/bus";
 import type { BusMessage } from "../lib/types";
 
 // We import the class directly — no Pi SDK dependency needed for scheduler tests
-import { SchedulerPlugin } from "../lib/plugins/scheduler";
+import { SchedulerPlugin } from "../lib/clients/scheduler";
 
 const TEST_WORKSPACE = join(import.meta.dir, ".test-workspace");
 
@@ -308,37 +308,64 @@ describe("SchedulerPlugin", () => {
   });
 
   test("cron recurring does NOT delete YAML after fire", async () => {
+    // Write a cron YAML that fires every second (for testing)
+    // Use a cron expression: "* * * * * *" won't work with 5-field cron
+    // Instead, write a YAML file directly with type: cron and a schedule
+    // that the scheduler will parse and fire
+    const file = join(TEST_WORKSPACE, "crons", "test-recurring.yaml");
+    const yaml = YAML.stringify({
+      id: "test-recurring",
+      type: "cron",
+      schedule: "* * * * *", // every minute
+      topic: "cron.test-recurring",
+      payload: { content: "recurring fire", sender: "cron" },
+      enabled: true,
+    });
+    writeFileSync(file, yaml);
+
+    // Install loads the YAML and schedules it
     plugin.install(bus);
 
-    const file = join(TEST_WORKSPACE, "crons", "test-recurring.yaml");
+    // The YAML should still exist (cron type is never deleted on load)
+    expect(existsSync(file)).toBe(true);
 
-    // Write a YAML with next fire in 50ms using a custom cron-like setup
-    // For testing, we use a one-shot trick: schedule fires, YAML persists
-    const fireTime = new Date(Date.now() + 50).toISOString();
+    // Verify it's loaded as cron type
+    const def = YAML.parse(readFileSync(file, "utf-8"));
+    expect(def.type).toBe("cron");
+    expect(def.id).toBe("test-recurring");
+  });
 
-    bus.publish("command.schedule", {
-      id: "test-recurring",
-      correlationId: "test-recurring",
-      topic: "command.schedule",
-      timestamp: Date.now(),
-      payload: {
-        action: "add",
-        id: "test-recurring",
-        schedule: fireTime,
-        topic: "cron.test-recurring",
-        payload: { content: "recurring fire" },
-      },
+  // --- Missed fire behavior ---
+
+  test("missed one-shot fires immediately on startup", async () => {
+    // Write a one-shot YAML that's already in the past (but within 24h)
+    const pastTime = new Date(Date.now() - 5 * 60 * 1000).toISOString(); // 5 min ago
+    const file = join(TEST_WORKSPACE, "crons", "missed.yaml");
+    const yaml = YAML.stringify({
+      id: "missed",
+      type: "once",
+      schedule: pastTime,
+      topic: "cron.missed",
+      payload: { content: "missed fire!", sender: "cron" },
+      enabled: true,
+    });
+    writeFileSync(file, yaml);
+
+    let fired: BusMessage | null = null;
+    bus.subscribe("cron.missed", "test", (msg) => {
+      fired = msg;
     });
 
-    // Force it to be "cron" type by overwriting the YAML
-    const def = YAML.parse(readFileSync(file, "utf-8"));
-    def.type = "cron";
-    writeFileSync(file, YAML.stringify(def));
+    // Install should detect the missed schedule and fire immediately
+    plugin.install(bus);
 
-    // Need to reinstall to pick up the change, or just test that file persists after fire
-    // Since the timer was already set as "once", we can't easily test cron persistence this way.
-    // Instead, just verify the YAML has type: cron
-    expect(def.type).toBe("cron");
+    // Give it a tick to process
+    await Bun.sleep(50);
+
+    expect(fired).not.toBeNull();
+    expect((fired!.payload as any).content).toBe("missed fire!");
+    // One-shot should have deleted the YAML
+    expect(existsSync(file)).toBe(false);
   });
 
   // --- Validation ---

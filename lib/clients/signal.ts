@@ -107,7 +107,10 @@ export class SignalPlugin implements Plugin {
   }
 
   private async handleOutbound(msg: BusMessage): Promise<void> {
-    if (!this.signalUrl || !this.signalNumber || !this.bus) return;
+    if (!this.signalUrl || !this.signalNumber || !this.bus) {
+      console.log("[Signal] Early return - missing config:", {signalUrl: !!this.signalUrl, signalNumber: !!this.signalNumber, bus: !!this.bus});
+      return;
+    }
 
     // Extract recipient from topic: message.outbound.signal.+1234
     const topicParts = msg.topic.split(".");

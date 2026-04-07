@@ -76,12 +76,12 @@ export class EventViewerPlugin implements Plugin {
     }
   }
 
-  private handleApiEvents(req: Request): Response {
+  private async handleApiEvents(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const topic = url.searchParams.get("topic");
     const limit = parseInt(url.searchParams.get("limit") || "100", 10);
     const dataDir = process.env.DATA_DIR || resolve(process.cwd(), "data");
-    const { Database } = require("bun:sqlite");
+    const { Database } = await import("bun:sqlite");
     const db = new Database(`${dataDir}/events.db`, { readonly: true });
 
     let rows: { payload: string }[];
@@ -112,8 +112,12 @@ export class EventViewerPlugin implements Plugin {
     if (pathname === "/" || pathname === "/index.html")
       return this.serveFile("index.html", "text/html");
 
-    const safePath = pathname.replace(/\.\./g, "");
-    const ext = safePath.split(".").pop()?.toLowerCase() || "";
+    const resolved = resolve(this.viewerDir, pathname.slice(1));
+    if (!resolved.startsWith(this.viewerDir)) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    const ext = resolved.split(".").pop()?.toLowerCase() || "";
     const mimes: Record<string, string> = {
       css: "text/css",
       js: "application/javascript",
@@ -121,12 +125,16 @@ export class EventViewerPlugin implements Plugin {
       png: "image/png",
       ico: "image/x-icon",
     };
-    return this.serveFile(safePath, mimes[ext] || "application/octet-stream");
+    return this.serveFile(resolved, mimes[ext] || "application/octet-stream");
   }
 
   private async serveFile(path: string, contentType: string): Promise<Response> {
     try {
-      const file = Bun.file(resolve(this.viewerDir, path));
+      const resolved = resolve(this.viewerDir, path);
+      if (!resolved.startsWith(this.viewerDir)) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      const file = Bun.file(resolved);
       if (await file.exists())
         return new Response(file, { headers: { "Content-Type": contentType } });
     } catch {}

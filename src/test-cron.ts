@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { InMemoryEventBus } from "../lib/bus";
-import { LoggerPlugin } from "../lib/plugins/logger";
-import { AgentPlugin } from "../lib/plugins/agent";
-import { SchedulerPlugin } from "../lib/plugins/scheduler";
+import { LoggerPlugin } from "../lib/clients/logger";
+import { AgentPlugin } from "../lib/clients/agent";
+import { SchedulerPlugin } from "../lib/clients/scheduler";
 import type { BusMessage } from "../lib/types";
 
 const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";
@@ -33,18 +33,21 @@ async function waitForReply(
   logger: LoggerPlugin,
   topicPattern: string,
   correlationId: string,
-  timeoutMs: number = 30000
+  timeoutMs: number = 30000,
+  seenIds?: Set<string>,
 ): Promise<BusMessage | null> {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
     const events = logger.getEvents(1000);
     const replyEvent = events.find((e) => {
+      if (seenIds && seenIds.has(e.id)) return false;
       if (correlationId && e.correlationId !== correlationId) return false;
       if (topicPattern && !e.topic.startsWith(topicPattern)) return false;
       return true;
     });
     if (replyEvent) {
+      if (seenIds) seenIds.add(replyEvent.id);
       return replyEvent;
     }
     await new Promise((r) => setTimeout(r, 100));
@@ -100,10 +103,11 @@ async function runTests(): Promise<void> {
   agent.install(bus);
   scheduler.install(bus);
 
-  debug("Agent workspace:", agent["workspaceDir"]);
-  debug("Scheduler crons dir:", scheduler["cronsDir"]);
+  debug("Agent workspace:", workspaceDir);
+  debug("Scheduler crons dir:", join(dataDir, "crons"));
 
   // --- Schedule tests via agent ---
+  const seenIds = new Set<string>();
   for (const [index, test] of TEST_PROMPTS.entries()) {
     console.log(`\n--- Test ${index + 1}/${TEST_PROMPTS.length}: ${test.name} ---`);
     console.log(`Q: ${test.message}`);
@@ -120,7 +124,9 @@ async function runTests(): Promise<void> {
 
     bus.publish(message.topic, message);
 
-    const reply = await waitForReply(logger, "message.outbound.test", correlationId, 30000);
+    // Inbound messages stream chunks to message.outbound.signal.{sender}
+    // with new correlationIds, so match on topic prefix only.
+    const reply = await waitForReply(logger, "message.outbound.signal.test", "", 30000, seenIds);
 
     if (reply) {
       console.log(`Agent response: ${reply.reply}`);

@@ -1,14 +1,14 @@
 import { existsSync, readdirSync, mkdirSync } from "node:fs";
 import { resolve, join, extname } from "node:path";
 import { InMemoryEventBus } from "../lib/bus";
-import { DebugPlugin } from "../lib/plugins/debug";
-import { LoggerPlugin } from "../lib/plugins/logger";
-import { CLIPlugin } from "../lib/plugins/cli";
-import { SignalPlugin } from "../lib/plugins/signal";
-import { EchoPlugin } from "../lib/plugins/echo";
-import { AgentPlugin } from "../lib/plugins/agent";
-import { SchedulerPlugin } from "../lib/plugins/scheduler";
-import { EventViewerPlugin } from "../lib/plugins/event-viewer";
+import { DebugPlugin } from "../lib/clients/debug";
+import { LoggerPlugin } from "../lib/clients/logger";
+import { CLIPlugin } from "../lib/clients/cli";
+import { SignalPlugin } from "../lib/clients/signal";
+import { EchoPlugin } from "../lib/clients/echo";
+import { AgentPlugin } from "../lib/clients/agent";
+import { SchedulerPlugin } from "../lib/clients/scheduler";
+import { EventViewerPlugin } from "../lib/clients/event-viewer";
 import type { Plugin } from "../lib/types";
 
 // --- Workspace config ---
@@ -63,7 +63,7 @@ for (const name of enabledPlugins) {
   }
 }
 
-// --- Dynamic plugin loading from workspace/plugins/ ---
+// --- Dynamic client loading from workspace/plugins/ ---
 function isPlugin(value: unknown): value is Plugin {
   return (
     typeof value === "object" &&

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { InMemoryEventBus } from "../lib/bus";
-import { EchoPlugin } from "../lib/plugins/echo";
+import { EchoPlugin } from "../lib/clients/echo";
 import type { BusMessage } from "../lib/types";
 
 describe("EchoPlugin", () => {

@@ -1,6 +1,7 @@
 import { ModelRegistry, AuthStorage } from "@mariozechner/pi-coding-agent";
+import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
 import type { Plugin, EventBus, BusMessage } from "../types";
 import {
   AGENT_INSTRUCTIONS,
@@ -11,6 +12,7 @@ import { LongLivedSessionStrategy } from "./agent/long-lived";
 import { RalphSessionStrategy } from "./agent/ralph";
 
 const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";
+const CONTEXT_LIMIT = parseInt(process.env.CONTEXT_LIMIT || "20", 10);
 
 function debug(...args: unknown[]): void {
   if (DEBUG) {
@@ -25,6 +27,7 @@ export class AgentPlugin implements Plugin {
 
   private bus: EventBus | null = null;
   private strategy!: SessionStrategy;
+  private strategyOverride: SessionStrategy | null = null;
   private modelRegistry: ModelRegistry | null = null;
   private authStorage: AuthStorage | null = null;
   private workspaceDir: string;
@@ -33,9 +36,11 @@ export class AgentPlugin implements Plugin {
   constructor(
     workspaceDir: string,
     dataDir: string,
+    strategy?: SessionStrategy,
   ) {
     this.workspaceDir = resolve(workspaceDir);
     this.dataDir = resolve(dataDir);
+    this.strategyOverride = strategy ?? null;
 
     this.authStorage = AuthStorage.inMemory({
       "local-llm": {
@@ -53,26 +58,30 @@ export class AgentPlugin implements Plugin {
   install(bus: EventBus): void {
     this.bus = bus;
 
-    const deps: SessionStrategyDeps = {
-      bus,
-      workspaceDir: this.workspaceDir,
-      dataDir: this.dataDir,
-      modelRegistry: this.modelRegistry,
-      authStorage: this.authStorage,
-    };
+    if (this.strategyOverride) {
+      this.strategy = this.strategyOverride;
+    } else {
+      const deps: SessionStrategyDeps = {
+        bus,
+        workspaceDir: this.workspaceDir,
+        dataDir: this.dataDir,
+        modelRegistry: this.modelRegistry,
+        authStorage: this.authStorage,
+      };
 
-    const mode = process.env.SESSION_MODE || "long-lived";
+      const mode = process.env.SESSION_MODE || "long-lived";
 
-    switch (mode) {
-      case "ralph":
-        this.strategy = new RalphSessionStrategy(deps);
-        debug("Agent plugin: Ralph session strategy (fresh per trigger)");
-        break;
-      case "long-lived":
-      default:
-        this.strategy = new LongLivedSessionStrategy(deps);
-        debug("Agent plugin: Long-lived session strategy (persistent sessions)");
-        break;
+      switch (mode) {
+        case "ralph":
+          this.strategy = new RalphSessionStrategy(deps);
+          debug("Agent plugin: Ralph session strategy (fresh per trigger, JIT context)");
+          break;
+        case "long-lived":
+        default:
+          this.strategy = new LongLivedSessionStrategy(deps);
+          debug("Agent plugin: Long-lived session strategy (persistent sessions)");
+          break;
+      }
     }
 
     bus.subscribe("message.inbound.#", this.name, (msg: BusMessage) => {
@@ -115,7 +124,12 @@ export class AgentPlugin implements Plugin {
 
     debug("Processing from", sender, content);
 
-    const response = await this.strategy.run(`signal:${sender}`, content);
+    const context = this.buildContext([
+      `message.inbound.signal.${sender}`,
+      `message.outbound.signal.${sender}`,
+    ]);
+
+    const response = await this.strategy.run(`signal:${sender}`, content, undefined, undefined, context ?? undefined);
 
     if (!response) return;
 
@@ -158,7 +172,16 @@ export class AgentPlugin implements Plugin {
       recipient ? `(recipient: ${recipient})` : "",
     );
 
-    const response = await this.strategy.run(channelId, content);
+    // Build context from recipient's channel history if available
+    let context: string | null = null;
+    if (recipient && channel === "signal") {
+      context = this.buildContext([
+        `message.inbound.signal.${recipient}`,
+        `message.outbound.signal.${recipient}`,
+      ]);
+    }
+
+    const response = await this.strategy.run(channelId, content, channel, undefined, context ?? undefined);
     if (!response) return;
 
     const replyTopic =
@@ -190,6 +213,47 @@ export class AgentPlugin implements Plugin {
         await this.strategy.reset(channel);
         console.log(`[Agent] Session reset for ${channel}`);
       }
+    }
+  }
+
+  /**
+   * Build a conversation context string from recent event log entries.
+   * Returns null if no history or DB unavailable.
+   */
+  private buildContext(topicPatterns: string[]): string | null {
+    const dbPath = join(this.dataDir, "events.db");
+    if (!existsSync(dbPath)) return null;
+
+    let db: Database | null = null;
+    try {
+      db = new Database(dbPath, { readonly: true });
+      const placeholders = topicPatterns.map(() => "topic LIKE ?").join(" OR ");
+      const rows = db
+        .query(
+          `SELECT payload FROM events WHERE (${placeholders}) ORDER BY timestamp DESC LIMIT ?`,
+        )
+        .all(...topicPatterns.map((p) => `${p}%`), CONTEXT_LIMIT) as {
+        payload: string;
+      }[];
+
+      if (rows.length === 0) return null;
+
+      // Reverse to chronological order (oldest first)
+      const messages = rows.reverse().map((r) => {
+        const msg: BusMessage = JSON.parse(r.payload);
+        const isInbound = msg.topic.includes("inbound");
+        const content =
+          msg.reply || (msg.payload as { content?: string })?.content || "";
+        const ts = new Date(msg.timestamp).toISOString().slice(0, 19);
+        return `[${ts}] ${isInbound ? "User" : "Agent"}: ${content}`;
+      });
+
+      return `[Recent conversation history]\n${messages.join("\n")}`;
+    } catch (e) {
+      debug("Context build failed:", e);
+      return null;
+    } finally {
+      db?.close();
     }
   }
 }

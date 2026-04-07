@@ -9,7 +9,6 @@ export class CLIPlugin implements Plugin {
 
   private bus: EventBus | null = null;
   private rl: readline.Interface | null = null;
-  private pendingChat = new Map<string, { resolve: (msg: BusMessage) => void }>();
 
   install(bus: EventBus): void {
     this.bus = bus;
@@ -178,31 +177,5 @@ export class CLIPlugin implements Plugin {
     process.stdout.write("\x1b[90m[thinking...]\x1b[0m ");
 
     this.bus.publish(msg.topic, msg);
-  }
-
-  private handleRawInput(input: string): void {
-    if (!this.bus) return;
-
-    try {
-      const parsed = JSON.parse(input);
-      if (parsed.topic && typeof parsed.topic === "string") {
-        const rawId = parsed.id || crypto.randomUUID();
-        const msg: BusMessage = {
-          id: rawId,
-          correlationId: parsed.correlationId || rawId,
-          topic: parsed.topic,
-          timestamp: Date.now(),
-          payload: parsed.payload ?? parsed,
-          reply: parsed.reply,
-          replyTo: parsed.replyTo,
-        };
-        this.bus.publish(msg.topic, msg);
-        console.log(`Published to ${msg.topic}`);
-      } else {
-        console.log("JSON must have a 'topic' field");
-      }
-    } catch {
-      console.log(`Unknown command: ${input.split(/\s+/)[0]}. Type 'help' for commands.`);
-    }
   }
 }

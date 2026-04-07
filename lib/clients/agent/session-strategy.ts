@@ -9,7 +9,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { EventBus } from "../../types";
+import type { EventBus, BusMessage } from "../../types";
 import { createScheduleTaskTool, createCancelScheduleTaskTool } from "./tools";
 
 const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";
@@ -83,7 +83,7 @@ Write important context to \`memory/\` as structured files. This persists across
 `;
 
 export interface SessionStrategy {
-  run(channelId: string, message: string): Promise<string | null>;
+  run(channelId: string, message: string, channel?: string, forceBuffered?: boolean, context?: string): Promise<string | null>;
   reset(channelId: string): Promise<void>;
 }
 
@@ -95,28 +95,162 @@ export interface SessionStrategyDeps {
   authStorage: AuthStorage | null;
 }
 
+const BUFFERED_MODE = process.env.BUFFERED_MODE === "true" || process.env.BUFFERED_MODE === "1";
+
+type AgentSession = Awaited<ReturnType<typeof createAgentSession>>["session"];
+
+export abstract class BaseSessionStrategy implements SessionStrategy {
+  protected sessionsDir: string;
+  private messageQueues = new Map<string, Promise<unknown>>();
+
+  constructor(protected deps: SessionStrategyDeps) {
+    this.sessionsDir = join(deps.dataDir, "sessions");
+    if (!existsSync(this.sessionsDir)) {
+      mkdirSync(this.sessionsDir, { recursive: true });
+    }
+  }
+
+  abstract reset(channelId: string): Promise<void>;
+
+  protected abstract getSession(channelId: string): Promise<AgentSession>;
+
+  async run(channelId: string, message: string, channel?: string, forceBuffered?: boolean, context?: string): Promise<string | null> {
+    const prev = this.messageQueues.get(channelId) ?? Promise.resolve();
+    let resolve!: (v: string | null) => void;
+    const next = prev
+      .then(() => this.doRun(channelId, message, channel, forceBuffered, context))
+      .then(
+        (v) => { resolve(v); },
+        () => { resolve(null); },
+      );
+    this.messageQueues.set(channelId, next);
+    return new Promise<string | null>((r) => { resolve = r; });
+  }
+
+  protected resetQueue(channelId: string): void {
+    this.messageQueues.delete(channelId);
+  }
+
+  private publishChunk(channelId: string, content: string, channel?: string): void {
+    const isSignalChannel = channel === "signal" || channelId.startsWith("signal:");
+    if (!isSignalChannel) return;
+    if (channelId.startsWith("cron:")) return;
+
+    const recipient = channelId.startsWith("signal:")
+      ? channelId.replace("signal:", "")
+      : undefined;
+    if (!recipient) return;
+
+    const replyTopic = `message.outbound.signal.${recipient}`;
+    const reply: BusMessage = {
+      id: crypto.randomUUID(),
+      correlationId: crypto.randomUUID(),
+      topic: replyTopic,
+      timestamp: Date.now(),
+      payload: { content },
+      reply: content,
+    };
+
+    this.deps.bus.publish(replyTopic, reply);
+    debug("Streamed chunk to", replyTopic, content.slice(0, 100));
+  }
+
+  private async doRun(
+    channelId: string,
+    userMessage: string,
+    channel?: string,
+    forceBuffered?: boolean,
+    context?: string,
+  ): Promise<string | null> {
+    const session = await this.getSession(channelId);
+    const prompt = context ? `${context}\n\n${userMessage}` : userMessage;
+    const useBuffered = BUFFERED_MODE || forceBuffered || channel === "signal";
+    if (useBuffered || channelId.startsWith("cron:")) {
+      return runSessionPrompt(session, prompt);
+    }
+    await runSessionPrompt(session, prompt, (chunk: string) => this.publishChunk(channelId, chunk, channel));
+    return null;
+  }
+
+  protected async createAgentSessionForDir(
+    channelDir: string,
+    channelId: string,
+    mode: "create" | "continue",
+  ): Promise<AgentSession> {
+    const loader = makeResourceLoader();
+    await loader.reload();
+
+    const customTools = makeTools(this.deps, channelId);
+    const sessionManager = makeSessionManager(this.deps.workspaceDir, channelDir, mode);
+
+    const { session } = await createAgentSession({
+      cwd: this.deps.workspaceDir,
+      tools: createCodingTools(this.deps.workspaceDir),
+      customTools,
+      sessionManager,
+      modelRegistry: this.deps.modelRegistry ?? undefined,
+      authStorage: this.deps.authStorage ?? undefined,
+      resourceLoader: loader,
+    });
+
+    return session;
+  }
+
+  protected async createInMemorySession(channelId: string): Promise<AgentSession> {
+    const loader = makeResourceLoader();
+    await loader.reload();
+
+    const customTools = makeTools(this.deps, channelId);
+
+    const { session } = await createAgentSession({
+      cwd: this.deps.workspaceDir,
+      tools: createCodingTools(this.deps.workspaceDir),
+      customTools,
+      sessionManager: SessionManager.inMemory(this.deps.workspaceDir),
+      modelRegistry: this.deps.modelRegistry ?? undefined,
+      authStorage: this.deps.authStorage ?? undefined,
+      resourceLoader: loader,
+    });
+
+    return session;
+  }
+}
+
 export async function runSessionPrompt(
   session: Awaited<ReturnType<typeof createAgentSession>>["session"],
   userMessage: string,
+  onChunk?: (chunk: string) => void,
 ): Promise<string | null> {
   let responseText = "";
+  let currentBlock = "";
+
+  const flushBlock = () => {
+    if (currentBlock.length > 0) {
+      onChunk?.(currentBlock);
+      currentBlock = "";
+    }
+  };
 
   return new Promise<string | null>((resolve) => {
     const unsubscribe = session.subscribe((event) => {
       switch (event.type) {
         case "message_update":
           if (event.assistantMessageEvent.type === "text_delta") {
-            responseText += event.assistantMessageEvent.delta;
+            const delta = event.assistantMessageEvent.delta;
+            responseText += delta;
+            currentBlock += delta;
           }
           break;
         case "tool_execution_start":
           debug("Tool call:", event.toolName, JSON.stringify(event.args));
+          flushBlock();
           break;
         case "tool_execution_end":
           debug("Tool result:", event.toolName, event.isError ? "error" : "success");
           break;
         case "agent_end":
           unsubscribe();
+          flushBlock();
           debug("Response:", responseText.slice(0, 200));
           resolve(responseText || null);
           break;

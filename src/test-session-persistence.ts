@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { InMemoryEventBus } from "../lib/bus";
-import { LoggerPlugin } from "../lib/plugins/logger";
-import { AgentPlugin } from "../lib/plugins/agent";
+import { LoggerPlugin } from "../lib/clients/logger";
+import { AgentPlugin } from "../lib/clients/agent";
 import type { BusMessage } from "../lib/types";
 
 const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";

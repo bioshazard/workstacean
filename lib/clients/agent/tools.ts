@@ -159,7 +159,7 @@ export function createCancelScheduleTaskTool(
       };
       bus.publish("command.schedule", cmdMsg);
 
-      const existed = !existsSync(filePath);
+      const existed = existsSync(filePath);
       return {
         content: [
           {
